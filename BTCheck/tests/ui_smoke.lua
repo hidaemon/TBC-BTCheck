@@ -70,6 +70,15 @@ function Object:SetMinMaxValues(minimum, maximum)
 end
 function Object:SetText(text)
     self.text = text
+    if self.frameType == "EditBox" then
+        local handler = self.scripts and self.scripts.OnTextChanged
+        if handler then
+            handler(self, false)
+        end
+    end
+end
+function Object:GetText()
+    return self.text or ""
 end
 function Object:SetTexture(texture)
     self.texture = texture
@@ -114,15 +123,16 @@ local noOpMethods = {
     "SetAllPoints", "SetColorTexture", "SetTexCoord", "SetJustifyH", "SetJustifyV",
     "SetTextColor", "SetFrameStrata", "SetMovable", "SetClampedToScreen", "EnableMouse", "EnableMouseWheel",
     "RegisterForDrag", "RegisterForClicks", "SetHighlightTexture", "SetOrientation", "SetValueStep",
-    "SetThumbTexture", "SetVertexColor", "SetOwner", "AddLine", "AddDoubleLine",
+    "SetThumbTexture", "SetVertexColor", "SetOwner", "AddLine", "AddDoubleLine", "SetAutoFocus",
+    "SetTextInsets", "SetFontObject", "ClearFocus",
 }
 for index = 1, #noOpMethods do
     Object[noOpMethods[index]] = function()
     end
 end
 
-function CreateFrame()
-    return setmetatable({ shown = true, scripts = {}, events = {} }, Object)
+function CreateFrame(frameType)
+    return setmetatable({ shown = true, scripts = {}, events = {}, frameType = frameType }, Object)
 end
 
 UIParent = setmetatable({ shown = true }, Object)
@@ -188,6 +198,16 @@ assert(#ns.characterManager.rows == 10, "character manager row pool is not sized
 assert(ns.mainFrame.horizontalSlider:GetScript("OnMouseWheel"), "horizontal scrollbar did not bind mouse-wheel scrolling")
 assert(ns.mainFrame.verticalSlider:GetScript("OnMouseWheel"), "vertical scrollbar did not bind mouse-wheel scrolling")
 assert(ns.mainFrame.characterHeaders[1].text.text:find("|cffffffff界面测试|r", 1, true), "character header did not apply priest class color")
+assert(ns.mainFrame.searchBox, "character search box was not created")
+ns.mainFrame.searchBox:SetText("面测")
+assert(#ns.visibleCharacters == 1 and ns.visibleCharacters[1].name == "界面测试", "fuzzy character search did not filter by substring")
+assert(ns.mainFrame.characterHeaders[1]:IsShown(), "matching character header was hidden")
+assert(ns.mainFrame.noCharacters.text ~= ns.STRINGS.NO_SEARCH_RESULTS, "matching search incorrectly showed no-results text")
+ns.mainFrame.searchBox:SetText("不存在")
+assert(#ns.visibleCharacters == 0, "unmatched character search still returned a character")
+assert(ns.mainFrame.noCharacters.text == ns.STRINGS.NO_SEARCH_RESULTS, "unmatched search did not show no-results text")
+ns.mainFrame.clearSearchButton:GetScript("OnClick")(ns.mainFrame.clearSearchButton)
+assert(ns.searchText == "" and #ns.visibleCharacters == 1, "clearing character search did not restore all characters")
 
 ns:ToggleMainWindow()
 assert(ns.mainFrame:IsShown(), "main window did not open")

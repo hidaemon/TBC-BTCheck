@@ -12,6 +12,8 @@ local math_sin = math.sin
 local math_rad = math.rad
 local math_deg = math.deg
 local math_atan2 = math.atan2
+local string_lower = string.lower
+local string_find = string.find
 
 local MAIN_WIDTH = 940
 local MAIN_HEIGHT = 640
@@ -54,6 +56,18 @@ local CLASS_COLOR_HEX = {
 local function ColorizeCharacterName(character)
     local color = CLASS_COLOR_HEX[character and character.classToken] or "ffffffff"
     return "|c" .. color .. tostring(character and character.name or "未知角色") .. "|r"
+end
+
+local function UpdateSearchHint(searchBox)
+    if not searchBox or not searchBox.searchHint then
+        return
+    end
+    local text = searchBox:GetText() or ""
+    if text == "" and not searchBox.searchHasFocus then
+        searchBox.searchHint:Show()
+    else
+        searchBox.searchHint:Hide()
+    end
 end
 
 local function AddBackground(frame, red, green, blue, alpha)
@@ -110,6 +124,51 @@ local function MakeButton(parent, text, width, height)
     label:SetText(text or "")
     button.label = label
     return button
+end
+
+local function CreateSearchBox(parent)
+    local searchBox = CreateFrame("EditBox", nil, parent)
+    searchBox:SetSize(190, 25)
+    searchBox:SetAutoFocus(false)
+    searchBox:SetTextInsets(6, 6, 0, 0)
+    searchBox:SetFontObject(GameFontHighlightSmall)
+    searchBox:SetTextColor(1, 1, 1)
+    searchBox:EnableMouse(true)
+    AddBackground(searchBox, 0.08, 0.08, 0.10, 0.98)
+    AddBorder(searchBox, 0.42, 0.42, 0.46, 1)
+
+    local hint = searchBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hint:SetPoint("LEFT", searchBox, "LEFT", 7, 0)
+    hint:SetText(ns.STRINGS.SEARCH_PLACEHOLDER)
+    hint:SetTextColor(0.55, 0.58, 0.64)
+    searchBox.searchHint = hint
+    searchBox.searchHasFocus = false
+
+    searchBox:SetScript("OnTextChanged", function(self)
+        ns.searchText = self:GetText() or ""
+        ns.columnOffset = 0
+        UpdateSearchHint(self)
+        if ns.mainFrame then
+            ns:RenderMainTable()
+        end
+    end)
+    searchBox:SetScript("OnEditFocusGained", function(self)
+        self.searchHasFocus = true
+        UpdateSearchHint(self)
+    end)
+    searchBox:SetScript("OnEditFocusLost", function(self)
+        self.searchHasFocus = false
+        UpdateSearchHint(self)
+    end)
+    searchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    searchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    UpdateSearchHint(searchBox)
+    return searchBox
 end
 
 local function MakeSlider(parent, orientation, width, height)
@@ -192,6 +251,23 @@ local function ScrollColumns(delta)
     ns.columnOffset = Clamp((ns.columnOffset or 0) - delta, 0, maximum)
     ns.mainFrame.horizontalSlider:SetValue(ns.columnOffset)
     ns:RenderMainTable()
+end
+
+function ns:FilterCharacters(characters)
+    local query = string_lower(tostring(self.searchText or ""))
+    if query == "" then
+        return characters
+    end
+
+    local filtered = {}
+    for index = 1, #characters do
+        local character = characters[index]
+        local name = string_lower(tostring(character.name or ""))
+        if string_find(name, query, 1, true) then
+            filtered[#filtered + 1] = character
+        end
+    end
+    return filtered
 end
 
 local function AddStepTooltip(step)
@@ -277,7 +353,7 @@ local function CreateMainFrame()
 
     local versionText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     versionText:SetPoint("LEFT", title, "RIGHT", 10, 0)
-    versionText:SetText("|cff888888v1.1.4｜作者：达蒙|r")
+    versionText:SetText("|cff888888v1.1.5｜作者：达蒙|r")
 
     local close = MakeButton(frame, "×", 28, 24)
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -7)
@@ -310,6 +386,23 @@ local function CreateMainFrame()
     local legend = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -82)
     legend:SetText("|cff33ff66已完成|r　|cffffcc00进行中|r　|cff777777未开始|r　｜　前四步按奥尔多/占星者二选一计数")
+
+    local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    searchLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 500, -82)
+    searchLabel:SetText("搜索角色")
+    searchLabel:SetTextColor(0.85, 0.82, 0.62)
+
+    local searchBox = CreateSearchBox(frame)
+    searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 568, -78)
+    frame.searchBox = searchBox
+
+    local clearSearch = MakeButton(frame, "清除", 50, 25)
+    clearSearch:SetPoint("LEFT", searchBox, "RIGHT", 6, 0)
+    clearSearch:SetScript("OnClick", function()
+        searchBox:SetText("")
+        searchBox:ClearFocus()
+    end)
+    frame.clearSearchButton = clearSearch
 
     local stepHeader = CreateFrame("Frame", nil, frame)
     stepHeader:SetPoint("TOPLEFT", frame, "TOPLEFT", LABEL_X, -108)
@@ -481,7 +574,7 @@ function ns:RenderMainTable()
         return
     end
 
-    local characters = self:GetCharacters(false)
+    local characters = self:FilterCharacters(self:GetCharacters(false))
     ns.visibleCharacters = characters
     local maxRows = math_max(0, #ns.STEPS - VISIBLE_ROWS)
     local maxColumns = math_max(0, #characters - VISIBLE_COLUMNS)
@@ -543,6 +636,11 @@ function ns:RenderMainTable()
         end
     end
 
+    if #characters == 0 and tostring(self.searchText or "") ~= "" then
+        frame.noCharacters:SetText(ns.STRINGS.NO_SEARCH_RESULTS)
+    else
+        frame.noCharacters:SetText(ns.STRINGS.NO_CHARACTERS)
+    end
     frame.noCharacters:SetShown(#characters == 0)
 end
 
@@ -876,6 +974,7 @@ function ns:InitializeUI()
     end
     ns.rowOffset = 0
     ns.columnOffset = 0
+    ns.searchText = ""
     ns.mainFrame = CreateMainFrame()
     ns.characterManager = CreateCharacterManager(ns.mainFrame)
     ns.minimapButton = CreateMinimapButton()

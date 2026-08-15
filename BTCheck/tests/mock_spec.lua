@@ -15,6 +15,24 @@ function frame:SetScript(script, handler)
         eventHandler = handler
     end
 end
+function frame:GetText()
+    return self.text or ""
+end
+function frame:SetText(text)
+    self.text = text
+end
+function frame:SetAutoFocus()
+end
+function frame:SetTextInsets()
+end
+function frame:SetFontObject()
+end
+function frame:SetTextColor()
+end
+function frame:ClearFocus()
+end
+function frame:Hide()
+end
 
 function CreateFrame()
     return frame

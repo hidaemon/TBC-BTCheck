@@ -44,6 +44,9 @@
 - Button：`RegisterForClicks`、`RegisterForDrag`、`SetHighlightTexture`。
 - Slider：`SetOrientation`、`SetMinMaxValues`、`SetValueStep`、`SetValue`、`SetThumbTexture`、`GetThumbTexture`。
 - Texture/FontString：`SetColorTexture`、`SetTexture`、`SetTexCoord`、`SetVertexColor`、`SetText`、`SetTextColor`、`SetJustifyH`、`SetJustifyV`、`SetWordWrap`。
+- EditBox：`GetText`、`SetText`、`SetAutoFocus`、`SetTextInsets`、`SetFontObject`、`SetTextColor`、`ClearFocus`。
+
+搜索框仅使用 EditBox 的 `OnTextChanged`、`OnEditFocusGained`、`OnEditFocusLost`、`OnEscapePressed` 和 `OnEnterPressed` 脚本处理器；这些处理器由目标客户端 EditBox/FrameXML 提供。
 
 插件自行绘制背景、边框、表格与滚动条，不依赖 `BackdropTemplate`、`ScrollBox`、`UIDropDownMenu`、`EasyMenu`、Settings API 或第三方 UI 库。
 

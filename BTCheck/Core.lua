@@ -103,6 +103,28 @@ function ns:ValidateCompatibility()
         missing = missing or "SlashCmdList"
     end
 
+    if not missing then
+        local searchBox = CreateFrame("EditBox", nil, UIParent)
+        if not searchBox then
+            missing = "CreateFrame(EditBox)"
+        else
+            local searchMethods = {
+                "GetText",
+                "SetText",
+                "SetAutoFocus",
+                "SetTextInsets",
+                "SetFontObject",
+                "SetTextColor",
+                "ClearFocus",
+            }
+            for index = 1, #searchMethods do
+                local method = searchMethods[index]
+                missing = missing or MissingFunction("EditBox:" .. method, searchBox[method])
+            end
+            searchBox:Hide()
+        end
+    end
+
     if type(C_DateAndTime) ~= "table" then
         missing = missing or "C_DateAndTime"
     else

@@ -3,7 +3,7 @@
 ## Notes: Track Black Temple attunement progress across characters.
 ## Notes-zhCN: 跨角色查看黑暗神殿开门任务线进度。
 ## Author: 达蒙
-## Version: 1.1.4
+## Version: 1.1.5
 ## SavedVariables: BTCheckDB
 
 Data.lua
