@@ -1,0 +1,11 @@
+## Interface: 20506
+## Title: BTCheck - 黑暗神殿开门进度
+## Notes: Track Black Temple attunement progress across characters.
+## Notes-zhCN: 跨角色查看黑暗神殿开门任务线进度。
+## Author: 达蒙
+## Version: 1.1.4
+## SavedVariables: BTCheckDB
+
+Data.lua
+Core.lua
+UI.lua
