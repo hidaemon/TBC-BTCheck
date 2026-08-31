@@ -3,7 +3,6 @@ local addonName, ns = ...
 local type = type
 local tostring = tostring
 local tonumber = tonumber
-local table_concat = table.concat
 local table_sort = table.sort
 local math_floor = math.floor
 local math_max = math.max
@@ -428,11 +427,51 @@ local function CreateMainFrame()
     end)
     frame.closeButton = close
 
-    local accountText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    accountText:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -48)
-    accountText:SetWidth(650)
+    local accountSummary = CreateFrame("Button", nil, frame)
+    accountSummary:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -48)
+    accountSummary:SetSize(580, 25)
+    accountSummary:SetFrameLevel(frame:GetFrameLevel() + 1)
+    accountSummary:EnableMouse(true)
+    frame.accountSummary = accountSummary
+    frame.accountTooltipNames = {}
+
+    local accountText = accountSummary:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    accountText:SetPoint("LEFT", accountSummary, "LEFT", 0, 0)
+    accountText:SetWidth(580)
     accountText:SetJustifyH("LEFT")
+    accountText:SetWordWrap(false)
     frame.accountText = accountText
+
+    accountSummary:SetScript("OnEnter", function(self)
+        local names = frame.accountTooltipNames or {}
+        local title = frame.accountTooltipTitle
+        if not title then
+            return
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+        GameTooltip:SetText(title, 1, 0.82, 0)
+        if frame.accountTooltipGateText then
+            GameTooltip:AddLine(frame.accountTooltipGateText, 0.72, 0.76, 0.84, true)
+        end
+        if #names == 0 then
+            GameTooltip:AddLine("尚无已记录角色完成该任务线。", 0.78, 0.78, 0.78)
+        else
+            GameTooltip:AddLine(" ")
+            for index = 1, #names, 2 do
+                local leftName = names[index]
+                local rightName = names[index + 1]
+                if rightName then
+                    GameTooltip:AddDoubleLine(leftName, rightName, 0.92, 0.92, 0.92, 0.92, 0.92, 0.92)
+                else
+                    GameTooltip:AddLine(leftName, 0.92, 0.92, 0.92)
+                end
+            end
+        end
+        GameTooltip:Show()
+    end)
+    accountSummary:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
 
     local refresh = MakeButton(frame, "刷新", 104, 25)
     refresh:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -216, -43)
@@ -1139,12 +1178,24 @@ function ns:RefreshUI()
     local raid = ns.RAIDS[selectedKey]
     if selectedKey == "overview" then
         ns.mainFrame.accountText:SetText("团本总览：|cff33ff66追踪 5 条开门任务线|r｜4 个团本无需个人开门")
+        ns.mainFrame.accountTooltipTitle = "TBC 团本开门总览"
+        ns.mainFrame.accountTooltipGateText = "选择上方团本可查看账号完成角色与当前进入要求。"
+        ns.mainFrame.accountTooltipNames = {}
     elseif raid and not raid.hasAttunement then
-        ns.mainFrame.accountText:SetText(raid.title .. "：|cff33ff66无需个人开门|r｜" .. raid.gateText)
+        ns.mainFrame.accountText:SetText(raid.title .. "：|cff33ff66无需个人开门任务|r")
+        ns.mainFrame.accountTooltipTitle = raid.title
+        ns.mainFrame.accountTooltipGateText = raid.gateText
+        ns.mainFrame.accountTooltipNames = {}
     else
         local unlocked, names = self:GetAccountUnlockSummary(raid)
-        local accountText = unlocked and (ns.STRINGS.ACCOUNT_UNLOCKED .. table_concat(names, "、")) or ns.STRINGS.ACCOUNT_PENDING
-        ns.mainFrame.accountText:SetText(raid.title .. "｜" .. accountText .. "｜" .. raid.gateText)
+        if unlocked then
+            ns.mainFrame.accountText:SetText(raid.title .. "｜账号开门：|cff33ff66已有 " .. tostring(#names) .. " 名角色完成|r｜悬停查看名单")
+        else
+            ns.mainFrame.accountText:SetText(raid.title .. "｜账号开门：|cffffcc00尚无已记录角色完成|r")
+        end
+        ns.mainFrame.accountTooltipTitle = raid.title .. "｜已完成角色 " .. tostring(#names) .. " 名"
+        ns.mainFrame.accountTooltipGateText = raid.gateText
+        ns.mainFrame.accountTooltipNames = names
     end
     self:RenderMainTable()
     if ns.characterManager and ns.characterManager:IsShown() then

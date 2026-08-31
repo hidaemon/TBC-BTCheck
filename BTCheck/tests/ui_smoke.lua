@@ -252,6 +252,26 @@ ns:RefreshUI()
 assert(ns.visibleCharacters[1].guid == "Player-1-UI", "current character was not fixed to the first main-table column")
 assert(ns.visibleCharacters[2].guid == "Player-2-Sort", "main-table characters were not sorted by completed steps")
 assert(ns.visibleCharacters[3].guid == "Player-3-Sort", "main-table secondary sort order was unexpected")
+
+for index = 1, 20 do
+    BTCheckDB.characters["Player-Finished-" .. tostring(index)] = {
+        name = "完成角色" .. tostring(index),
+        realm = "完成服",
+        classToken = "PALADIN",
+        hidden = true,
+        manualHidden = true,
+        raids = { black_temple = { quests = { [10985] = ns.STATUS_DONE } } },
+    }
+end
+ns:RefreshUI()
+assert(ns.mainFrame.accountSummary, "account completion summary did not create a tooltip target")
+assert(ns.mainFrame.accountText.text:find("已有 20 名角色完成", 1, true), "account summary did not show completion count")
+assert(not ns.mainFrame.accountText.text:find("完成角色1", 1, true), "account summary still rendered the full name list inline")
+assert(#ns.mainFrame.accountTooltipNames == 20, "account tooltip did not retain the completed character list")
+ns.mainFrame.accountSummary:GetScript("OnEnter")(ns.mainFrame.accountSummary)
+assert(GameTooltip.text:find("已完成角色 20 名", 1, true), "account tooltip did not identify the full completion count")
+ns.mainFrame.accountSummary:GetScript("OnLeave")(ns.mainFrame.accountSummary)
+
 local currentCharacter = BTCheckDB.characters["Player-1-UI"]
 local savedCurrentQuests = currentCharacter.raids.black_temple.quests
 currentCharacter.raids.black_temple.quests = {}

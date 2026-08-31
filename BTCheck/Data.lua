@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.ADDON_NAME = addonName
 ns.DB_VERSION = 2
-ns.ADDON_VERSION = "2.0.0"
+ns.ADDON_VERSION = "2.0.1"
 ns.TARGET_VERSION = "2.5.6"
 ns.TARGET_INTERFACE = 20506
 
