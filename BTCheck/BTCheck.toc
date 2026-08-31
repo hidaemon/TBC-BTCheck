@@ -1,9 +1,9 @@
 ## Interface: 20506
-## Title: BTCheck - 黑暗神殿开门进度
-## Notes: Track Black Temple attunement progress across characters.
-## Notes-zhCN: 跨角色查看黑暗神殿开门任务线进度。
+## Title: BTCheck - TBC 团本开门进度
+## Notes: Track TBC raid attunement progress across characters.
+## Notes-zhCN: 跨角色查看 TBC 70级团本开门任务线进度。
 ## Author: 达蒙
-## Version: 1.1.5
+## Version: 2.0.0
 ## SavedVariables: BTCheckDB
 
 Data.lua

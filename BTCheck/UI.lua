@@ -4,6 +4,7 @@ local type = type
 local tostring = tostring
 local tonumber = tonumber
 local table_concat = table.concat
+local table_sort = table.sort
 local math_floor = math.floor
 local math_max = math.max
 local math_min = math.min
@@ -16,7 +17,7 @@ local string_lower = string.lower
 local string_find = string.find
 
 local MAIN_WIDTH = 940
-local MAIN_HEIGHT = 640
+local MAIN_HEIGHT = 680
 local LABEL_X = 18
 local LABEL_WIDTH = 195
 local TABLE_X = 223
@@ -24,7 +25,12 @@ local COLUMN_WIDTH = 130
 local VISIBLE_COLUMNS = 5
 local ROW_HEIGHT = 25
 local VISIBLE_ROWS = 16
-local BODY_TOP = -171
+local HEADER_TOP = -139
+local BODY_TOP = -202
+local SELECTOR_X = 18
+local SELECTOR_TOP = -107
+local SELECTOR_WIDTH = 86
+local SELECTOR_GAP = 4
 local CHARACTER_ROWS_PER_PAGE = 10
 local CHARACTER_ROW_STEP = 46
 
@@ -206,6 +212,11 @@ local function Clamp(value, minimum, maximum)
     return math_min(math_max(value, minimum), maximum)
 end
 
+local function GetActiveRaid()
+    local raidKey = ns:GetSelectedRaidKey()
+    return ns.RAIDS[raidKey], raidKey
+end
+
 function ns:ApplyWindowPosition()
     if not ns.mainFrame or not ns.db then
         return
@@ -236,7 +247,9 @@ local function ScrollRows(delta)
     if not ns.mainFrame then
         return
     end
-    local maximum = math_max(0, #ns.STEPS - VISIBLE_ROWS)
+    local raid = GetActiveRaid()
+    local steps = raid and raid.steps or {}
+    local maximum = math_max(0, #steps - VISIBLE_ROWS)
     ns.rowOffset = Clamp((ns.rowOffset or 0) - delta, 0, maximum)
     ns.mainFrame.verticalSlider:SetValue(ns.rowOffset)
     ns:RenderMainTable()
@@ -270,8 +283,53 @@ function ns:FilterCharacters(characters)
     return filtered
 end
 
-local function AddStepTooltip(step)
+function ns:SortMainCharacters(characters)
+    local raid = GetActiveRaid()
+    local current = nil
+    local others = {}
+
+    for index = 1, #characters do
+        local character = characters[index]
+        if character.guid == self.currentGUID then
+            current = character
+        else
+            others[#others + 1] = character
+        end
+    end
+
+    table_sort(others, function(left, right)
+        local leftCompleted = self:GetProgress(left, raid)
+        local rightCompleted = self:GetProgress(right, raid)
+        if leftCompleted ~= rightCompleted then
+            return leftCompleted > rightCompleted
+        end
+
+        local leftSeen = tonumber(left.lastSeen) or 0
+        local rightSeen = tonumber(right.lastSeen) or 0
+        if leftSeen ~= rightSeen then
+            return leftSeen > rightSeen
+        end
+
+        local leftKey = tostring(left.name or "") .. "-" .. tostring(left.realm or "")
+        local rightKey = tostring(right.name or "") .. "-" .. tostring(right.realm or "")
+        return leftKey < rightKey
+    end)
+
+    local sorted = {}
+    if current then
+        sorted[1] = current
+    end
+    for index = 1, #others do
+        sorted[#sorted + 1] = others[index]
+    end
+    return sorted
+end
+
+local function AddStepTooltip(step, raid)
     GameTooltip:SetText(step.title, 1, 0.82, 0)
+    if raid then
+        GameTooltip:AddLine(raid.title, 0.72, 0.80, 0.92)
+    end
     for index = 1, #step.ids do
         local questID = step.ids[index]
         local branch = step.branches and step.branches[questID]
@@ -281,26 +339,33 @@ local function AddStepTooltip(step)
             GameTooltip:AddLine("Quest ID " .. tostring(questID), 0.85, 0.85, 0.85)
         end
     end
-    if step.branches then
-        GameTooltip:AddLine("两个阵营任务二选一，只计一个逻辑步骤。", 0.55, 0.75, 1, true)
+    if step.group then
+        GameTooltip:AddLine("分组：" .. step.group, 0.72, 0.72, 0.78)
+    end
+    if step.branchNote then
+        GameTooltip:AddLine(step.branchNote, 0.55, 0.75, 1, true)
+    end
+    if step.note then
+        GameTooltip:AddLine(step.note, 0.75, 0.75, 0.80, true)
     end
 end
 
 function ns:ShowCellTooltip(cell)
     local step = cell.step
     local character = cell.character
-    if not step or not character then
+    local raid = cell.raid
+    if not step or not character or not raid then
         return
     end
 
     GameTooltip:SetOwner(cell, "ANCHOR_RIGHT")
-    AddStepTooltip(step)
+    AddStepTooltip(step, raid)
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine(tostring(character.name) .. "-" .. tostring(character.realm), 1, 1, 1)
 
     for index = 1, #step.ids do
         local questID = step.ids[index]
-        local status = self:GetQuestStatus(character, questID)
+        local status = self:GetQuestStatus(character, questID, raid)
         local branch = step.branches and step.branches[questID]
         local label = branch and (branch .. "｜" .. tostring(questID)) or tostring(questID)
         local statusText = STATUS_PLAIN[status] or ns.STRINGS.TODO
@@ -353,7 +418,7 @@ local function CreateMainFrame()
 
     local versionText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     versionText:SetPoint("LEFT", title, "RIGHT", 10, 0)
-    versionText:SetText("|cff888888v1.1.5｜作者：达蒙|r")
+    versionText:SetText("|cff888888v" .. ns.ADDON_VERSION .. "｜作者：达蒙|r")
 
     local close = MakeButton(frame, "×", 28, 24)
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -7)
@@ -365,7 +430,7 @@ local function CreateMainFrame()
 
     local accountText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     accountText:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -48)
-    accountText:SetWidth(515)
+    accountText:SetWidth(650)
     accountText:SetJustifyH("LEFT")
     frame.accountText = accountText
 
@@ -385,7 +450,8 @@ local function CreateMainFrame()
 
     local legend = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -82)
-    legend:SetText("|cff33ff66已完成|r　|cffffcc00进行中|r　|cff777777未开始|r　｜　前四步按奥尔多/占星者二选一计数")
+    legend:SetText("|cff33ff66已完成|r　|cffffcc00进行中|r　|cff777777未开始|r　｜　任务进度与当前进入要求分别显示")
+    frame.legend = legend
 
     local searchLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     searchLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 500, -82)
@@ -404,19 +470,40 @@ local function CreateMainFrame()
     end)
     frame.clearSearchButton = clearSearch
 
+    frame.raidButtons = {}
+    local selectorKeys = { "overview" }
+    for raidIndex = 1, #ns.RAID_ORDER do
+        selectorKeys[#selectorKeys + 1] = ns.RAID_ORDER[raidIndex]
+    end
+    for selectorIndex = 1, #selectorKeys do
+        local raidKey = selectorKeys[selectorIndex]
+        local label = raidKey == "overview" and "总览" or ns.RAIDS[raidKey].shortTitle
+        local raidButton = MakeButton(frame, label, SELECTOR_WIDTH, 24)
+        raidButton:SetPoint("TOPLEFT", frame, "TOPLEFT", SELECTOR_X + ((selectorIndex - 1) * (SELECTOR_WIDTH + SELECTOR_GAP)), SELECTOR_TOP)
+        raidButton.raidKey = raidKey
+        raidButton:SetScript("OnClick", function(self)
+            ns:SetSelectedRaidKey(self.raidKey)
+            ns.rowOffset = 0
+            ns.columnOffset = 0
+            ns:RefreshUI()
+        end)
+        frame.raidButtons[selectorIndex] = raidButton
+    end
+
     local stepHeader = CreateFrame("Frame", nil, frame)
-    stepHeader:SetPoint("TOPLEFT", frame, "TOPLEFT", LABEL_X, -108)
+    stepHeader:SetPoint("TOPLEFT", frame, "TOPLEFT", LABEL_X, HEADER_TOP)
     stepHeader:SetSize(LABEL_WIDTH, 58)
     AddBackground(stepHeader, 0.11, 0.10, 0.07, 1)
     AddBorder(stepHeader, 0.42, 0.36, 0.17, 1)
     local stepHeaderText = stepHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     stepHeaderText:SetPoint("CENTER", stepHeader, "CENTER", 0, 0)
     stepHeaderText:SetText("任务步骤")
+    frame.stepHeader = stepHeader
 
     frame.characterHeaders = {}
     for column = 1, VISIBLE_COLUMNS do
         local header = CreateFrame("Button", nil, frame)
-        header:SetPoint("TOPLEFT", frame, "TOPLEFT", TABLE_X + ((column - 1) * COLUMN_WIDTH), -108)
+        header:SetPoint("TOPLEFT", frame, "TOPLEFT", TABLE_X + ((column - 1) * COLUMN_WIDTH), HEADER_TOP)
         header:SetSize(COLUMN_WIDTH, 58)
         AddBackground(header, 0.09, 0.10, 0.12, 1)
         AddBorder(header, 0.30, 0.34, 0.42, 1)
@@ -435,7 +522,8 @@ local function CreateMainFrame()
             if not character then
                 return
             end
-            local done, total, active = ns:GetProgress(character)
+            local raid = GetActiveRaid()
+            local done, total, active = ns:GetProgress(character, raid)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText(ColorizeCharacterName(character) .. "-" .. tostring(character.realm), 1, 0.82, 0)
             GameTooltip:AddLine(tostring(character.className or "") .. "｜" .. tostring(character.factionName or ""), 0.8, 0.8, 0.8)
@@ -483,8 +571,8 @@ local function CreateMainFrame()
                 return
             end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            AddStepTooltip(self.step)
-            local doneCount, activeCount = ns:GetStepCharacterCounts(self.step, ns.visibleCharacters or ns:GetCharacters(false))
+            AddStepTooltip(self.step, self.raid)
+            local doneCount, activeCount = ns:GetStepCharacterCounts(self.step, ns.visibleCharacters or ns:GetCharacters(false), self.raid)
             local recordedCount = doneCount + activeCount
             GameTooltip:AddLine("已完成 " .. tostring(doneCount) .. " 人｜进行中 " .. tostring(activeCount) .. " 人｜共 " .. tostring(recordedCount) .. " 人", 0.75, 0.85, 0.95)
             GameTooltip:Show()
@@ -556,6 +644,72 @@ local function CreateMainFrame()
     noCharacters:Hide()
     frame.noCharacters = noCharacters
 
+    local overviewPanel = CreateFrame("Frame", nil, frame)
+    overviewPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, HEADER_TOP)
+    overviewPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 38)
+    overviewPanel:SetFrameLevel(frame:GetFrameLevel() + 5)
+    AddBackground(overviewPanel, 0.028, 0.028, 0.036, 1)
+    frame.overviewPanel = overviewPanel
+    overviewPanel.cards = {}
+
+    for raidIndex = 1, #ns.RAID_ORDER do
+        local raid = ns.RAIDS[ns.RAID_ORDER[raidIndex]]
+        local card = CreateFrame("Button", nil, overviewPanel)
+        local column = (raidIndex - 1) % 3
+        local row = math_floor((raidIndex - 1) / 3)
+        card:SetPoint("TOPLEFT", overviewPanel, "TOPLEFT", 10 + (column * 294), -10 - (row * 158))
+        card:SetSize(284, 146)
+        AddBackground(card, row % 2 == 0 and 0.065 or 0.055, 0.065, 0.080, 1)
+        AddBorder(card, 0.28, 0.31, 0.38, 1)
+        local cardHighlight = card:CreateTexture(nil, "HIGHLIGHT")
+        cardHighlight:SetAllPoints(card)
+        cardHighlight:SetColorTexture(0.95, 0.78, 0.18, 0.10)
+        card:SetHighlightTexture(cardHighlight)
+
+        local cardTitle = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        cardTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -12)
+        cardTitle:SetText(raid.title .. "　|cff888f9c" .. tostring(raid.size) .. "人|r")
+        card.title = cardTitle
+
+        local cardStatus = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cardStatus:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -40)
+        cardStatus:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -12, 12)
+        cardStatus:SetJustifyH("LEFT")
+        cardStatus:SetJustifyV("TOP")
+        cardStatus:SetWordWrap(true)
+        card.status = cardStatus
+        card.raid = raid
+        card:SetScript("OnClick", function(self)
+            ns:SetSelectedRaidKey(self.raid.key)
+            ns.rowOffset = 0
+            ns.columnOffset = 0
+            ns:RefreshUI()
+        end)
+        overviewPanel.cards[raidIndex] = card
+    end
+
+    local raidNotice = CreateFrame("Frame", nil, frame)
+    raidNotice:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, HEADER_TOP)
+    raidNotice:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 38)
+    raidNotice:SetFrameLevel(frame:GetFrameLevel() + 5)
+    AddBackground(raidNotice, 0.028, 0.028, 0.036, 1)
+    local noticeTitle = raidNotice:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    noticeTitle:SetPoint("CENTER", raidNotice, "CENTER", 0, 48)
+    raidNotice.title = noticeTitle
+    local noticeText = raidNotice:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    noticeText:SetPoint("CENTER", raidNotice, "CENTER", 0, 5)
+    noticeText:SetWidth(620)
+    noticeText:SetJustifyH("CENTER")
+    noticeText:SetWordWrap(true)
+    raidNotice.text = noticeText
+    local noticeHint = raidNotice:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    noticeHint:SetPoint("CENTER", raidNotice, "CENTER", 0, -52)
+    noticeHint:SetText("点击上方其他团本可查看角色任务进度")
+    noticeHint:SetTextColor(0.6, 0.63, 0.7)
+    frame.raidNotice = raidNotice
+    overviewPanel:Hide()
+    raidNotice:Hide()
+
     local footer = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     footer:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 18, 13)
     footer:SetText("/btcheck　打开/关闭｜/btcheck chars　角色管理｜/btcheck reset　重置位置")
@@ -568,35 +722,96 @@ local function CreateMainFrame()
     return frame
 end
 
+local function HideDetailTable(frame)
+    frame.stepHeader:Hide()
+    for column = 1, VISIBLE_COLUMNS do frame.characterHeaders[column]:Hide() end
+    for row = 1, VISIBLE_ROWS do
+        frame.rowLabels[row]:Hide()
+        for column = 1, VISIBLE_COLUMNS do frame.cells[row][column]:Hide() end
+    end
+    frame.verticalSlider:Hide()
+    frame.horizontalSlider:Hide()
+    frame.noCharacters:Hide()
+end
+
+function ns:RenderRaidOverview()
+    local frame = ns.mainFrame
+    if not frame or not frame.overviewPanel then return end
+    local current = ns.db and ns.currentGUID and ns.db.characters[ns.currentGUID] or nil
+
+    for index = 1, #frame.overviewPanel.cards do
+        local card = frame.overviewPanel.cards[index]
+        local raid = card.raid
+        if raid.hasAttunement then
+            local completed, total, active = self:GetProgress(current, raid)
+            local unlocked = self:GetAccountUnlockSummary(raid)
+            local accountText = unlocked and "|cff33ff66账号已有角色完成|r" or "|cffffcc00账号尚无完成记录|r"
+            local progressText = current and ("当前角色：" .. tostring(completed) .. "/" .. tostring(total) .. (active > 0 and ("｜进行中 " .. tostring(active)) or "")) or "当前角色：等待登录扫描"
+            local gateColor = raid.gateStatus == "REQUIRED" and "|cffffcc00" or "|cff9aa5b1"
+            card.status:SetText(progressText .. "\n" .. accountText .. "\n" .. gateColor .. raid.gateText .. "|r\n\n|cffffd100点击查看任务线|r")
+        else
+            card.status:SetText("|cff33ff66无需个人开门任务|r\n" .. raid.gateText .. "\n\n|cffffd100点击查看说明|r")
+        end
+    end
+end
+
 function ns:RenderMainTable()
     local frame = ns.mainFrame
-    if not frame then
+    if not frame then return end
+
+    local selectedKey = self:GetSelectedRaidKey()
+    for index = 1, #frame.raidButtons do
+        local button = frame.raidButtons[index]
+        if button.raidKey == selectedKey then
+            button.background:SetColorTexture(0.28, 0.22, 0.08, 1)
+            button.label:SetTextColor(1, 0.82, 0)
+        else
+            button.background:SetColorTexture(0.12, 0.12, 0.14, 0.96)
+            button.label:SetTextColor(1, 0.82, 0)
+        end
+    end
+
+    if selectedKey == "overview" then
+        HideDetailTable(frame)
+        frame.raidNotice:Hide()
+        self:RenderRaidOverview()
+        frame.overviewPanel:Show()
         return
     end
 
-    local characters = self:FilterCharacters(self:GetCharacters(false))
+    local raid = ns.RAIDS[selectedKey]
+    frame.overviewPanel:Hide()
+    if not raid or not raid.hasAttunement then
+        HideDetailTable(frame)
+        frame.raidNotice.title:SetText(raid and raid.title or "未知团本")
+        frame.raidNotice.text:SetText("|cff33ff66" .. ns.STRINGS.NO_ATTUNEMENT .. "|r\n\n" .. tostring(raid and raid.gateText or ""))
+        frame.raidNotice:Show()
+        return
+    end
+    frame.raidNotice:Hide()
+    frame.stepHeader:Show()
+
+    local characters = self:SortMainCharacters(self:FilterCharacters(self:GetCharacters(false)))
     ns.visibleCharacters = characters
-    local maxRows = math_max(0, #ns.STEPS - VISIBLE_ROWS)
+    local maxRows = math_max(0, #raid.steps - VISIBLE_ROWS)
     local maxColumns = math_max(0, #characters - VISIBLE_COLUMNS)
     ns.rowOffset = Clamp(ns.rowOffset or 0, 0, maxRows)
     ns.columnOffset = Clamp(ns.columnOffset or 0, 0, maxColumns)
 
     frame.verticalSlider:SetMinMaxValues(0, maxRows)
     frame.verticalSlider:SetValue(ns.rowOffset)
-    if maxRows > 0 then
-        frame.verticalSlider:Show()
-    else
-        frame.verticalSlider:Hide()
-    end
+    frame.verticalSlider:SetShown(maxRows > 0)
     frame.horizontalSlider:SetMinMaxValues(0, maxColumns)
     frame.horizontalSlider:SetValue(ns.columnOffset)
+    frame.horizontalSlider:Show()
 
     for column = 1, VISIBLE_COLUMNS do
         local character = characters[ns.columnOffset + column]
         local header = frame.characterHeaders[column]
         header.character = character
+        header.raid = raid
         if character then
-            local completed, total, active = self:GetProgress(character)
+            local completed, total, active = self:GetProgress(character, raid)
             local liveMarker = character.guid == ns.currentGUID and not ns.deletedThisSession[character.guid] and "|cff33ff66●|r " or ""
             header.text:SetText(liveMarker .. ColorizeCharacterName(character) .. "\n|cff9aa5b1" .. tostring(character.realm) .. "|r\n" .. tostring(completed) .. "/" .. tostring(total) .. (active > 0 and ("　|cffffcc00进行 " .. tostring(active) .. "|r") or ""))
             header:Show()
@@ -607,13 +822,14 @@ function ns:RenderMainTable()
 
     for row = 1, VISIBLE_ROWS do
         local stepIndex = ns.rowOffset + row
-        local step = ns.STEPS[stepIndex]
+        local step = raid.steps[stepIndex]
         local rowLabel = frame.rowLabels[row]
         rowLabel.step = step
+        rowLabel.raid = raid
         if step then
-            local branchMarker = step.branches and " |cff73bfff[阵营]|r" or ""
+            local branchMarker = step.branches and (" |cff73bfff[" .. tostring(step.branchLabel or "分支") .. "]|r") or ""
             rowLabel.text:SetText(string.format("%02d　%s%s", stepIndex, step.title, branchMarker))
-            local doneCount, activeCount = self:GetStepCharacterCounts(step, characters)
+            local doneCount, activeCount = self:GetStepCharacterCounts(step, characters, raid)
             rowLabel.countText:SetText(tostring(doneCount + activeCount) .. "人")
             rowLabel:Show()
         else
@@ -626,8 +842,9 @@ function ns:RenderMainTable()
             local character = characters[ns.columnOffset + column]
             cell.step = step
             cell.character = character
+            cell.raid = raid
             if step and character then
-                local status = self:GetStepStatus(character, step)
+                local status = self:GetStepStatus(character, step, raid)
                 cell.text:SetText(STATUS_TEXT[status] or STATUS_TEXT[ns.STATUS_TODO])
                 cell:Show()
             else
@@ -660,7 +877,7 @@ local function CreateCharacterManager(mainFrame)
 
     local description = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     description:SetPoint("TOPLEFT", panel, "TOPLEFT", 18, -43)
-    description:SetText("未开始第一步的非当前角色会自动隐藏；隐藏只影响主表，删除会移除快照。")
+    description:SetText("所有团本任务均未开始的非当前角色会自动隐藏；隐藏只影响主表，删除会移除全部团本快照。")
     description:SetTextColor(0.7, 0.72, 0.76)
 
     local close = MakeButton(panel, "返回进度表", 100, 26)
@@ -790,12 +1007,22 @@ function ns:RefreshCharacterManager()
         local row = panel.rows[rowIndex]
         row.character = character
         if character then
-            local completed, total, active = self:GetProgress(character)
+            local selectedKey = self:GetSelectedRaidKey()
+            local selectedRaid = ns.RAIDS[selectedKey]
+            local completed, total, active
+            local progressLabel
+            if selectedRaid and selectedRaid.hasAttunement then
+                completed, total, active = self:GetProgress(character, selectedRaid)
+                progressLabel = selectedRaid.shortTitle
+            else
+                completed, total, active = self:GetOverallProgress(character)
+                progressLabel = "全部任务线"
+            end
             local state = character.hidden and "|cffffcc00已隐藏|r" or "|cff33ff66显示中|r"
             local autoNote = character.autoHidden and "　|cffffcc00自动隐藏|r" or ""
-            local firstStepNote = self:IsFirstStepNotStarted(character) and "　|cffffcc00未开始开门任务|r" or ""
+            local firstStepNote = not self:HasAnyTrackedProgress(character) and "　|cffffcc00未开始任何开门任务|r" or ""
             local sync = character.guid == ns.currentGUID and not ns.deletedThisSession[character.guid] and ns.STRINGS.LIVE or self:FormatTimestamp(character.lastSeen)
-            row.name:SetText(ColorizeCharacterName(character) .. "-" .. tostring(character.realm) .. "　" .. state .. autoNote .. firstStepNote .. "　进度 " .. tostring(completed) .. "/" .. tostring(total) .. (active > 0 and ("｜进行中 " .. tostring(active)) or "") .. "\n|cff888f9c同步：" .. sync .. "|r")
+            row.name:SetText(ColorizeCharacterName(character) .. "-" .. tostring(character.realm) .. "　" .. state .. autoNote .. firstStepNote .. "　" .. progressLabel .. " " .. tostring(completed) .. "/" .. tostring(total) .. (active > 0 and ("｜进行中 " .. tostring(active)) or "") .. "\n|cff888f9c同步：" .. sync .. "|r")
             SetButtonText(row.hideButton, character.hidden and "恢复" or "隐藏")
             row:Show()
         else
@@ -908,11 +1135,16 @@ function ns:RefreshUI()
         return
     end
 
-    local unlocked, names = self:GetAccountUnlockSummary()
-    if unlocked then
-        ns.mainFrame.accountText:SetText(ns.STRINGS.ACCOUNT_UNLOCKED .. table_concat(names, "、"))
+    local selectedKey = self:GetSelectedRaidKey()
+    local raid = ns.RAIDS[selectedKey]
+    if selectedKey == "overview" then
+        ns.mainFrame.accountText:SetText("团本总览：|cff33ff66追踪 5 条开门任务线|r｜4 个团本无需个人开门")
+    elseif raid and not raid.hasAttunement then
+        ns.mainFrame.accountText:SetText(raid.title .. "：|cff33ff66无需个人开门|r｜" .. raid.gateText)
     else
-        ns.mainFrame.accountText:SetText(ns.STRINGS.ACCOUNT_PENDING)
+        local unlocked, names = self:GetAccountUnlockSummary(raid)
+        local accountText = unlocked and (ns.STRINGS.ACCOUNT_UNLOCKED .. table_concat(names, "、")) or ns.STRINGS.ACCOUNT_PENDING
+        ns.mainFrame.accountText:SetText(raid.title .. "｜" .. accountText .. "｜" .. raid.gateText)
     end
     self:RenderMainTable()
     if ns.characterManager and ns.characterManager:IsShown() then

@@ -1,4 +1,4 @@
-# BTCheck 2.5.6 / 20506 API 审计
+# BTCheck 2.0.0 / TBC 2.5.6 / 20506 API 审计
 
 ## 审计基线
 
@@ -13,6 +13,8 @@
 
 ## 任务接口
 
+2.0.0 将扫描范围从黑暗神殿扩展到卡拉赞、毒蛇神殿、风暴要塞、海加尔山之战和黑暗神殿，但没有新增任何任务API。所有Quest ID仍只经过以下两个已审计函数读取。
+
 | 接口/事件 | 用途 | 20506 依据 |
 |---|---|---|
 | `C_QuestLog.IsQuestFlaggedCompleted(questID)` | 判断历史完成 | `QuestLogDocumentation.lua` 的正式函数定义 |
@@ -20,7 +22,7 @@
 | `QUEST_LOG_UPDATE` | 任务日志变化后刷新 | `QuestLogDocumentation.lua` 的正式事件定义 |
 | `QUEST_TURNED_IN` | 交任务后立即刷新 | `QuestLogDocumentation.lua` 的正式事件定义 |
 
-计划草案中的 `C_QuestLog.GetLogIndexForQuestID` **不在 20506 TBC QuestLog 自动生成文档中**，因此实现没有使用它。20506 官方定义的 `C_QuestLog.IsOnQuest` 直接返回任务是否在日志中，无需依赖旧版 `GetQuestLogIndexByID`。
+计划草案中的 `C_QuestLog.GetLogIndexForQuestID` **不在 20506 TBC QuestLog 自动生成文档中**，因此实现没有使用它。20506官方定义的 `C_QuestLog.IsOnQuest` 直接返回任务是否在日志中，无需依赖旧版 `GetQuestLogIndexByID`。毒蛇神殿和海加尔任务不读取Boss目标数量，避免引入未审计的任务目标接口。
 
 ## 角色、时间与版本接口
 
@@ -48,7 +50,7 @@
 
 搜索框仅使用 EditBox 的 `OnTextChanged`、`OnEditFocusGained`、`OnEditFocusLost`、`OnEscapePressed` 和 `OnEnterPressed` 脚本处理器；这些处理器由目标客户端 EditBox/FrameXML 提供。
 
-插件自行绘制背景、边框、表格与滚动条，不依赖 `BackdropTemplate`、`ScrollBox`、`UIDropDownMenu`、`EasyMenu`、Settings API 或第三方 UI 库。
+插件自行绘制背景、边框、团本选择按钮、总览卡片、表格与滚动条，不依赖 `BackdropTemplate`、`ScrollBox`、`UIDropDownMenu`、`EasyMenu`、Settings API 或第三方 UI 库。
 
 小地图按钮图标使用 `Interface\\Icons\\Spell_Shadow_Metamorphosis`。该路径在目标 2.5.6/20506 客户端源码 `Blizzard_SettingsDefinitions_Frame/Classic/Colorblind.xml` 中被实际引用；未使用此前未经目标客户端源码核对的 `Spell_Shadow_Shadowform`。
 

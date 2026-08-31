@@ -1,5 +1,9 @@
 local addonPath = (... or "outputs/BTCheck")
 
+math.atan2 = math.atan2 or function(y, x)
+    return math.atan(y, x)
+end
+
 local Object = {}
 Object.__index = Object
 
@@ -185,11 +189,28 @@ local eventHandler = ns.eventFrame:GetScript("OnEvent")
 assert(eventHandler, "event handler missing")
 eventHandler(ns.eventFrame, "ADDON_LOADED", "BTCheck")
 assert(ns.mainFrame and ns.minimapButton and ns.characterManager, "UI initialization failed")
+assert(#ns.mainFrame.raidButtons == 10, "raid selector did not allocate overview plus nine raids")
+assert(#ns.mainFrame.overviewPanel.cards == 9, "overview did not allocate nine raid cards")
 assert(#ns.mainFrame.characterHeaders == 5, "main table did not allocate five visible character columns")
 assert(ns.mainFrame.characterHeaders[1].width == 130, "character column width changed unexpectedly")
 assert(#ns.mainFrame.rowLabels == 16, "main table did not allocate all sixteen task rows")
 assert(not ns.mainFrame.verticalSlider:IsShown(), "vertical slider should be hidden when all task rows fit")
 eventHandler(ns.eventFrame, "PLAYER_LOGIN")
+assert(ns:GetSelectedRaidKey() == "overview", "new database should open on raid overview")
+assert(ns.mainFrame.overviewPanel:IsShown(), "raid overview was not shown after login")
+
+local function ClickRaid(raidKey)
+    for index = 1, #ns.mainFrame.raidButtons do
+        local button = ns.mainFrame.raidButtons[index]
+        if button.raidKey == raidKey then
+            button:GetScript("OnClick")(button)
+            return
+        end
+    end
+    error("missing raid selector button: " .. raidKey)
+end
+
+ClickRaid("black_temple")
 assert(ns.mainFrame.rowLabels[1].countText.text == "1人", "task row did not show the visible character count")
 assert(ns.mainFrame.rowLabels[1].text.wordWrap == false, "task row text still allows wrapping")
 assert(ns.minimapButton.icon.texture == "Interface\\Icons\\Spell_Shadow_Metamorphosis", "minimap icon path was not the verified 20506 asset")
@@ -198,6 +219,47 @@ assert(#ns.characterManager.rows == 10, "character manager row pool is not sized
 assert(ns.mainFrame.horizontalSlider:GetScript("OnMouseWheel"), "horizontal scrollbar did not bind mouse-wheel scrolling")
 assert(ns.mainFrame.verticalSlider:GetScript("OnMouseWheel"), "vertical scrollbar did not bind mouse-wheel scrolling")
 assert(ns.mainFrame.characterHeaders[1].text.text:find("|cffffffff界面测试|r", 1, true), "character header did not apply priest class color")
+
+BTCheckDB.characters["Player-2-Sort"] = {
+    name = "高进度角色",
+    realm = "排序服二",
+    className = "战士",
+    classToken = "WARRIOR",
+    factionName = "联盟",
+    factionToken = "Alliance",
+    hidden = false,
+    lastSeen = 1000,
+    manualHidden = false,
+    raids = { black_temple = { quests = {
+        [10568] = ns.STATUS_DONE, [10571] = ns.STATUS_DONE,
+        [10574] = ns.STATUS_DONE, [10575] = ns.STATUS_DONE,
+        [10622] = ns.STATUS_DONE, [10628] = ns.STATUS_DONE,
+    } } },
+}
+BTCheckDB.characters["Player-3-Sort"] = {
+    name = "低进度角色",
+    realm = "排序服三",
+    className = "盗贼",
+    classToken = "ROGUE",
+    factionName = "联盟",
+    factionToken = "Alliance",
+    hidden = false,
+    lastSeen = 3000,
+    manualHidden = false,
+    raids = { black_temple = { quests = { [10568] = ns.STATUS_DONE } } },
+}
+ns:RefreshUI()
+assert(ns.visibleCharacters[1].guid == "Player-1-UI", "current character was not fixed to the first main-table column")
+assert(ns.visibleCharacters[2].guid == "Player-2-Sort", "main-table characters were not sorted by completed steps")
+assert(ns.visibleCharacters[3].guid == "Player-3-Sort", "main-table secondary sort order was unexpected")
+local currentCharacter = BTCheckDB.characters["Player-1-UI"]
+local savedCurrentQuests = currentCharacter.raids.black_temple.quests
+currentCharacter.raids.black_temple.quests = {}
+ns:ApplyAutomaticVisibility()
+ns:RefreshUI()
+assert(not currentCharacter.hidden and ns.visibleCharacters[1].guid == "Player-1-UI", "unstarted current character was hidden or moved from the first column")
+currentCharacter.raids.black_temple.quests = savedCurrentQuests
+ns:RefreshUI()
 assert(ns.mainFrame.searchBox, "character search box was not created")
 ns.mainFrame.searchBox:SetText("面测")
 assert(#ns.visibleCharacters == 1 and ns.visibleCharacters[1].name == "界面测试", "fuzzy character search did not filter by substring")
@@ -207,7 +269,15 @@ ns.mainFrame.searchBox:SetText("不存在")
 assert(#ns.visibleCharacters == 0, "unmatched character search still returned a character")
 assert(ns.mainFrame.noCharacters.text == ns.STRINGS.NO_SEARCH_RESULTS, "unmatched search did not show no-results text")
 ns.mainFrame.clearSearchButton:GetScript("OnClick")(ns.mainFrame.clearSearchButton)
-assert(ns.searchText == "" and #ns.visibleCharacters == 1, "clearing character search did not restore all characters")
+assert(ns.searchText == "" and #ns.visibleCharacters == 3, "clearing character search did not restore all characters")
+
+ClickRaid("tempest_keep")
+assert(ns.mainFrame.verticalSlider:IsShown(), "30-step Tempest Keep line did not enable vertical scrolling")
+assert(ns.mainFrame.verticalSlider.maximum == 14, "Tempest Keep vertical range was not 30 minus 16 rows")
+ClickRaid("gruuls_lair")
+assert(ns.mainFrame.raidNotice:IsShown(), "no-attunement raid did not show its explanation panel")
+assert(not ns.mainFrame.stepHeader:IsShown(), "no-attunement raid left the task table visible")
+ClickRaid("black_temple")
 
 ns:ToggleMainWindow()
 assert(ns.mainFrame:IsShown(), "main window did not open")
@@ -233,5 +303,5 @@ dragStop(ns.minimapButton)
 SlashCmdList.BTCHECK("reset")
 SlashCmdList.BTCHECK("refresh")
 
-assert(ns:GetProgress(BTCheckDB.characters["Player-1-UI"]) == 2, "UI smoke progress changed unexpectedly")
-print("BTCheck UI smoke test: PASS")
+assert(ns:GetProgress(BTCheckDB.characters["Player-1-UI"], "black_temple") == 2, "UI smoke progress changed unexpectedly")
+print("BTCheck v2 UI smoke test: PASS")
